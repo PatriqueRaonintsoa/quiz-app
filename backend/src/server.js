@@ -1,3 +1,4 @@
+
 import express from "express";
 import http from "http";
 import cors from "cors";
@@ -17,13 +18,16 @@ import {
 
 dotenv.config();
 
+const corsOrigins = (process.env.CORS_ORIGIN || "*").split(",").map(o => o.trim());
+
+
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: process.env.CORS_ORIGIN || "*" },
+      cors: { origin: corsOrigins },
 });
 
 // ---------------------------------------------------------------------------
@@ -358,6 +362,7 @@ io.on("connection", (socket) => {
 
     if (result === "good") {
       holder.judged = "good";
+      io.to(room(sessionId)).emit("sound:play", { sound: "correct" });
       for (const [deviceId, p] of state.players.entries()) {
         if (p.id === holder.playerId) {
           p.score += q.points;
@@ -372,6 +377,7 @@ io.on("connection", (socket) => {
       await pool.execute("UPDATE questions SET status='closed' WHERE id=:id", { id: q.id });
     } else if (result === "bad") {
       holder.judged = "bad";
+      io.to(room(sessionId)).emit("sound:play", { sound: "wrong" });
       const next = currentBuzzerHolder({ currentQuestion: q });
       if (!next) {
         q.status = "closed";

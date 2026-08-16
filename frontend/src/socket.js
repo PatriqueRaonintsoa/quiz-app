@@ -1,5 +1,7 @@
 import { io } from "socket.io-client";
 import { API_URL } from "./api.js";
+import { playSound } from "./sounds.js";
+
 
 let socket = null;
 
@@ -7,6 +9,7 @@ let socket = null;
 export function getSocket() {
   if (!socket) {
     socket = io(API_URL, { autoConnect: false });
+    socket.on("sound:play", ({ sound }) => playSound(sound));
   }
   return socket;
 }

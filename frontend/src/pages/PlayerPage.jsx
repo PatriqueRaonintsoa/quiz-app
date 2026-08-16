@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getDeviceId } from "../api.js";
 import { connectAndJoin, getSocket } from "../socket.js";
+import { playSound } from "../sounds.js";
+
 
 export default function PlayerPage() {
   const { id } = useParams();
@@ -29,6 +31,7 @@ export default function PlayerPage() {
   }, [state?.currentQuestion?.id]);
 
   function pressBuzzer() {
+    playSound("buzzer");
     getSocket().emit("buzzer:press");
     setFlashBuzz(true);
     setTimeout(() => setFlashBuzz(false), 300);
