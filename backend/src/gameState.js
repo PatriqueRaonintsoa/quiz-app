@@ -8,7 +8,7 @@ export function getState(sessionId) {
     sessions.set(sessionId, {
       status: "waiting",
       players: new Map(), // deviceId -> {id, name, score, socketId, connected}
-      currentQuestion: null, // {id, type, text, options, multiple, points, status, activatedAt, correctOptions, reveal, answeredPlayerIds:Set}
+      currentQuestion: null, // {id, type, text, options, multiple, points, status, activatedAt, correctOptions, reveal, answeredPlayerIds:Set, buzzerQueue}
       buzzerQueue: [], // [{playerId, name, at, judged: null|'good'|'bad'|'skip'}]
     });
   }
@@ -32,35 +32,43 @@ export function currentBuzzerHolder(state) {
   return q.buzzerQueue?.find((b) => !b.judged) || null;
 }
 
-// Construit la vue publique/joueur (sans les réponses correctes tant que non révélées)
+function baseCurrentQuestion(q) {
+  return {
+    id: q.id,
+    type: q.type,
+    text: q.text,
+    options: q.options || null,
+    multiple: !!q.multiple,
+    points: q.points,
+    status: q.status, // 'draft' | 'active' | 'closed'
+    activatedAt: q.activatedAt,
+  };
+}
+
+function buzzerInfo(q) {
+  const holder = currentBuzzerHolder({ currentQuestion: q });
+  return {
+    currentPlayerName: holder ? holder.name : null,
+    currentPlayerId: holder ? holder.playerId : null,
+    queue: q.buzzerQueue.map((b) => ({ name: b.name, judged: b.judged })),
+  };
+}
+
+// Construit la vue publique/joueur (sans les réponses correctes tant que non
+// révélées, et sans les questions "ouvertes" tant qu'elles sont seulement
+// sélectionnées par le jury et pas encore lancées via "Démarrer le buzzer").
 export function publicView(state, sessionName) {
   const q = state.currentQuestion;
   let currentQuestion = null;
   let buzzer = null;
   let reveal = null;
 
-  if (q) {
-    currentQuestion = {
-      id: q.id,
-      type: q.type,
-      text: q.text,
-      options: q.options || null,
-      multiple: !!q.multiple,
-      points: q.points,
-      status: q.status, // 'active' | 'closed'
-      activatedAt: q.activatedAt,
-    };
-    if (q.type === "buzzer") {
-      const holder = currentBuzzerHolder({ currentQuestion: q });
-      buzzer = {
-        currentPlayerName: holder ? holder.name : null,
-        currentPlayerId: holder ? holder.playerId : null,
-        queue: q.buzzerQueue.map((b) => ({ name: b.name, judged: b.judged })),
-      };
-    }
-    if (q.status === "closed" && q.reveal) {
-      reveal = q.reveal;
-    }
+  const hiddenFromPublic = q && q.type === "buzzer" && q.status === "draft";
+
+  if (q && !hiddenFromPublic) {
+    currentQuestion = baseCurrentQuestion(q);
+    if (q.type === "buzzer") buzzer = buzzerInfo(q);
+    if (q.status === "closed" && q.reveal) reveal = q.reveal;
   }
 
   return {
@@ -73,13 +81,21 @@ export function publicView(state, sessionName) {
   };
 }
 
+// Le jury voit toujours la question courante en entier (y compris en statut
+// "draft", avant l'ouverture du buzzer aux joueurs), avec la réponse.
 export function juryView(state, sessionName) {
   const base = publicView(state, sessionName);
   const q = state.currentQuestion;
-  if (q && base.currentQuestion) {
+  if (q) {
+    base.currentQuestion = baseCurrentQuestion(q);
     base.currentQuestion.correctOptions = q.correctOptions || null;
+    base.currentQuestion.answerText = q.answerText || null;
     base.currentQuestion.answeredCount = q.answeredPlayerIds ? q.answeredPlayerIds.size : 0;
     base.currentQuestion.totalPlayers = state.players.size;
+    if (q.type === "buzzer") {
+      base.buzzer = buzzerInfo(q);
+      if (q.status === "closed" && q.reveal) base.reveal = q.reveal;
+    }
   }
   return base;
 }

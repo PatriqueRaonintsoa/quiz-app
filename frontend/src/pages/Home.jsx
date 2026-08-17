@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import logo from "../assets/meeabo-logo.png";
+import NavBar from "../components/NavBar.jsx";
+import Footer from "../components/Footer.jsx";
 
 export default function Home() {
   const [sessions, setSessions] = useState([]);
-  const [showCreate, setShowCreate] = useState(false);
+  const [view, setView] = useState(null); // null | "create" | "join"
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -32,35 +35,44 @@ export default function Home() {
     }
   }
 
-  return (
-    <div className="page center">
-      <h1>🏆 Questions pour un champion</h1>
-      <p className="subtitle">Sessions de jeu en cours</p>
+  function toggleView(next) {
+    setError("");
+    setView((current) => (current === next ? null : next));
+  }
 
-      <div className="session-list">
-        {sessions.length === 0 && <p className="muted">Aucune session pour le moment.</p>}
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            className="session-card"
-            onClick={() => navigate(`/session/${s.id}`)}
+  // Les sessions terminées ne sont plus proposées ici : elles ont leur
+  // propre page de résultats, accessible depuis leur lien direct.
+  const joinableSessions = sessions.filter((s) => s.status !== "ended");
+
+  return (
+    <div className="page home-page">
+      <NavBar />
+      <div className="home-hero">
+        <img src={logo} alt="Meeabo" className="home-logo" />
+        <p className="home-description">
+          Organisez des sessions de "Questions pour un champion" en temps
+          réel : buzzer, QCM ou mode mixte, classement en direct et écran
+          public pour vos événements.
+        </p>
+
+        <div className="home-actions">
+          <button
+            className={`btn btn-primary btn-lg ${view === "create" ? "active" : ""}`}
+            onClick={() => toggleView("create")}
           >
-            <span className="session-name">{s.name}</span>
-            <span className={`badge badge-${s.status}`}>
-              {s.status === "waiting" && "En attente"}
-              {s.status === "started" && "En cours"}
-              {s.status === "ended" && "Terminée"}
-            </span>
-          </div>
-        ))}
+            Créer une session
+          </button>
+          <button
+            className={`btn btn-secondary btn-lg ${view === "join" ? "active" : ""}`}
+            onClick={() => toggleView("join")}
+          >
+            Ouvrir une session
+          </button>
+        </div>
       </div>
 
-      {!showCreate ? (
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          + Créer une nouvelle session (Jury)
-        </button>
-      ) : (
-        <form className="card form" onSubmit={handleCreate}>
+      {view === "create" && (
+        <form className="card form home-panel" onSubmit={handleCreate}>
           <h3>Créer une session</h3>
           <label>Nom de la session</label>
           <input
@@ -78,13 +90,41 @@ export default function Home() {
           />
           {error && <p className="error">{error}</p>}
           <div className="row gap">
-            <button type="submit" className="btn btn-primary">Créer</button>
-            <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>
+            <button type="submit" className="btn btn-primary">
+              Créer
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setView(null)}>
               Annuler
             </button>
           </div>
         </form>
       )}
+
+      {view === "join" && (
+        <div className="card home-panel">
+          <h3 className="home-panel-title">Sessions disponibles</h3>
+          <div className="session-list">
+            {joinableSessions.length === 0 && (
+              <p className="muted">Aucune session pour le moment.</p>
+            )}
+            {joinableSessions.map((s) => (
+              <div
+                key={s.id}
+                className="session-card"
+                onClick={() => navigate(`/session/${s.id}`)}
+              >
+                <span className="session-name">{s.name}</span>
+                <span className={`badge badge-${s.status}`}>
+                  {s.status === "waiting" && "En attente"}
+                  {s.status === "started" && "En cours"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Footer />
     </div>
   );
 }

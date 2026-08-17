@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { ShieldCheck, Gamepad2, Tv } from "lucide-react";
 import { api, getDeviceId } from "../api.js";
+import LoadingScreen from "../components/LoadingScreen.jsx";
+import NavBar from "../components/NavBar.jsx";
+import Footer from "../components/Footer.jsx";
 
 export default function SessionLanding() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [notFound, setNotFound] = useState(false);
+  const [hasPlayer, setHasPlayer] = useState(false); // ce device a-t-il déjà rejoint cette session ?
+  const [view, setView] = useState(null); // null | "jury" | "play"
 
   const [juryCode, setJuryCode] = useState("");
   const [juryError, setJuryError] = useState("");
 
   const [playerName, setPlayerName] = useState("");
   const [playerError, setPlayerError] = useState("");
-  const [checkingReturning, setCheckingReturning] = useState(true);
+  const [joinBlockedMessage, setJoinBlockedMessage] = useState("");
 
   useEffect(() => {
     api
@@ -22,14 +28,53 @@ export default function SessionLanding() {
       .catch(() => setNotFound(true));
   }, [id]);
 
-  // Si ce device a déjà un joueur enregistré pour cette session -> redirection directe
+  // Une session terminée n'a plus de choix Jury/Jouer : on va directement
+  // sur sa page de résultats.
+  useEffect(() => {
+    if (session?.status === "ended") {
+      navigate(`/session/${id}/results`, { replace: true });
+    }
+  }, [session, id, navigate]);
+
+  // Sait si ce device a déjà un joueur enregistré pour cette session, sans
+  // jamais rediriger automatiquement : l'utilisateur choisit toujours
+  // lui-même où il veut aller depuis cette page.
   useEffect(() => {
     const deviceId = getDeviceId();
     api
       .getMyPlayer(id, deviceId)
-      .then(() => navigate(`/session/${id}/play`))
-      .catch(() => setCheckingReturning(false));
-  }, [id, navigate]);
+      .then(() => setHasPlayer(true))
+      .catch(() => setHasPlayer(false));
+  }, [id]);
+
+  function toggleView(next) {
+    setJuryError("");
+    setPlayerError("");
+    setView((current) => (current === next ? null : next));
+  }
+
+  // Une fois la session lancée, plus aucun nouveau joueur ne peut s'inscrire
+  // (ça fausserait le classement/la banque déjà en cours). Les joueurs déjà
+  // inscrits avant le démarrage peuvent en revanche toujours revenir sur
+  // leur page.
+  const sessionInProgress = session?.status === "started" || session?.status === "paused";
+  const joinLocked = sessionInProgress && !hasPlayer;
+
+  function handlePlayClick() {
+    if (hasPlayer) {
+      // Déjà inscrit sur cet appareil : pas besoin de redemander le nom.
+      navigate(`/session/${id}/play`);
+      return;
+    }
+    if (joinLocked) {
+      setJoinBlockedMessage(
+        "Session en cours, vous ne pouvez pas rejoindre pour le moment. Revenez une fois que cette session sera terminée."
+      );
+      return;
+    }
+    setJoinBlockedMessage("");
+    toggleView("play");
+  }
 
   async function handleJurySubmit(e) {
     e.preventDefault();
@@ -56,45 +101,103 @@ export default function SessionLanding() {
     }
   }
 
-  if (notFound) return <div className="page center"><p>Session introuvable.</p><Link to="/">Retour à l'accueil</Link></div>;
-  if (!session || checkingReturning) return <div className="page center"><p>Chargement...</p></div>;
+  if (notFound)
+    return (
+      <div className="page center">
+        <NavBar />
+        <p>Session introuvable.</p>
+        <Link to="/">Retour à l'accueil</Link>
+      </div>
+    );
+
+  if (!session || session.status === "ended") return <LoadingScreen />;
 
   return (
-    <div className="page center">
-      <h1>{session.name}</h1>
-      <p className="subtitle">Choisissez votre rôle</p>
+    <div className="page home-page">
+      <NavBar />
+      <div className="home-hero">
+        <h1>{session.name}</h1>
+        <p className="home-description">
+          Choisissez votre rôle pour rejoindre cette session.
+        </p>
 
-      <div className="two-blocks">
-        <form className="card form" onSubmit={handleJurySubmit}>
-          <h3>👨‍⚖️ Jury</h3>
+        <div className="home-actions">
+          <button
+            className={`btn btn-secondary btn-lg btn-icon ${view === "jury" ? "active" : ""}`}
+            onClick={() => toggleView("jury")}
+          >
+            <ShieldCheck size={20} />
+            Se connecter en tant que jury
+          </button>
+          <button
+            className={`btn btn-primary btn-lg btn-icon ${view === "play" ? "active" : ""} ${
+              joinLocked ? "btn-locked" : ""
+            }`}
+            title={joinLocked ? "Session en cours, inscription indisponible" : undefined}
+            onClick={handlePlayClick}
+          >
+            <Gamepad2 size={20} />
+            Jouer
+          </button>
+        </div>
+
+        {joinBlockedMessage && <p className="error">{joinBlockedMessage}</p>}
+      </div>
+
+      {view === "jury" && (
+        <form className="card form home-panel" onSubmit={handleJurySubmit}>
+          <h3>Espace jury</h3>
           <p className="muted">Entrez le code secret pour piloter la session.</p>
+          <label>Code de session</label>
           <input
             type="password"
-            placeholder="Code de session"
+            placeholder="Code secret"
             value={juryCode}
             onChange={(e) => setJuryCode(e.target.value)}
             required
           />
           {juryError && <p className="error">{juryError}</p>}
-          <button type="submit" className="btn btn-secondary">Accéder à l'espace jury</button>
+          <div className="row gap">
+            <button type="submit" className="btn btn-secondary">
+              Accéder à l'espace jury
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setView(null)}>
+              Annuler
+            </button>
+          </div>
         </form>
+      )}
 
-        <form className="card form" onSubmit={handlePlaySubmit}>
-          <h3>🎮 Jouer</h3>
+      {view === "play" && (
+        <form className="card form home-panel" onSubmit={handlePlaySubmit}>
+          <h3>Rejoindre la partie</h3>
           <p className="muted">Entrez votre nom pour participer.</p>
+          <label>Votre nom</label>
           <input
             type="text"
-            placeholder="Votre nom"
+            placeholder="Ex: Rina"
             value={playerName}
             onChange={(e) => setPlayerName(e.target.value)}
             required
           />
           {playerError && <p className="error">{playerError}</p>}
-          <button type="submit" className="btn btn-primary">Rejoindre la partie</button>
+          <div className="row gap">
+            <button type="submit" className="btn btn-primary">
+              Rejoindre la partie
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setView(null)}>
+              Annuler
+            </button>
+          </div>
         </form>
-      </div>
+      )}
 
-      <Link className="muted link" to={`/session/${id}/public`}>📺 Ouvrir l'écran public</Link>
+      <Link className="muted link icon-link" to={`/session/${id}/public`}>
+        <Tv size={16} />
+        Ouvrir l'écran public
+      </Link>
+
+      <Footer />
     </div>
   );
 }

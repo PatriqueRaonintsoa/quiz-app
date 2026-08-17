@@ -38,6 +38,7 @@ export const api = {
     request(`/api/sessions/${sessionId}/questions/${questionId}?code=${encodeURIComponent(code)}`, {
       method: "DELETE",
     }),
+  getResultsDetail: (sessionId) => request(`/api/sessions/${sessionId}/results-detail`),
 };
 
 // Génère / récupère un identifiant persistant de device (localStorage)
